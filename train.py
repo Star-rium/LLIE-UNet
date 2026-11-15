@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn 
 import copy
 import pandas as pd
+import os
 
 from src.metrics import calculate_metrics
 from src.models.direct_cnn import DirectCNN
@@ -17,7 +18,6 @@ def train(seed, train_loader, val_loader, epochs, eta, train_len, val_len):
     print("=" * 60)
 
     set_seed(seed)
-    loader_generator = torch.Generator().manual_seed(seed)
 
     model = DirectCNN().to(device)
 
@@ -85,12 +85,22 @@ def train(seed, train_loader, val_loader, epochs, eta, train_len, val_len):
             f"Best Val: {best_val_loss:.6f}"
         )
 
-    torch.save(best_state, './output/d_cnn_weights.pth')
+    model.load_state_dict(best_state)
+    os.makedirs("./output/checkpoints", exist_ok=True)
+    torch.save(
+        {
+            "seed": seed,
+            "model_state_dict": best_state,
+            "best_val_loss": best_val_loss
+        },
+        f"./output/checkpoints/d_cnn_seed_{seed}.pth"
+    )
     return model, history, best_val_loss
 
 
 def evaluate_model(model, seed, test_dataset):
     print(f"\nEvaluating seed {seed}...")
+    assert len(test_dataset) == 100, f"Expected 100 test images, got {len(test_dataset)}"
     model.eval()
 
     results = []
@@ -122,3 +132,24 @@ def evaluate_model(model, seed, test_dataset):
                 })
 
     return pd.DataFrame(results)
+
+
+METRICS = ["MLI", "CI", "E", "AG"]
+METHOD_ORDER = ["Input", "Output", "Ground Truth"]
+
+def summarize_metrics(results_df, ddof=1):
+    """Mean ± SD across test images, per method.
+    ddof=1 -> sample SD (pandas default), ddof=0 -> population SD."""
+    grouped = results_df.groupby("Method")[METRICS]
+    mean = grouped.mean().loc[METHOD_ORDER]
+    std = grouped.std(ddof=ddof).loc[METHOD_ORDER]
+
+    display = pd.DataFrame(index=mean.index)
+    for m in METRICS:
+        display[f"{m} Mean ± SD"] = [
+            f"{mean.loc[k, m]:.4f} ± {std.loc[k, m]:.4f}" for k in mean.index
+        ]
+
+    print(f"\nMETRIC SUMMARY (SD over images, ddof={ddof})")
+    print(display.to_string())
+    return display

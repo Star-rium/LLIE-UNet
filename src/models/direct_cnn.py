@@ -5,7 +5,7 @@ class DirectCNN(nn.Module):
     def __init__(self):
         super().__init__()
         # initialize CNN network
-        # start with a 9 layers network (no pooling, downsampling)
+        # start with a 4 layers network (no pooling, downsampling)
         self.network = nn.Sequential(
             nn.Conv2d(3, 32, 3, padding=1), # (3 channels) -> (32 channels, 3x3 kernel)
             nn.ReLU(inplace=True),
