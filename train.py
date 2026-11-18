@@ -1,8 +1,10 @@
 import torch
-import torch.nn as nn 
+import torch.nn as nn
+import numpy as np
 import copy
 import pandas as pd
 import os
+import cv2
 
 from src.metrics import calculate_metrics
 from src.models.direct_cnn import DirectCNN
@@ -11,6 +13,15 @@ from seed import set_seed
 device = torch.device(
     "cuda" if torch.cuda.is_available() else "cpu"
 )
+
+def apply_clahe(img, clip_limit=2.0, tile_grid=(8, 8)):
+    arr = (img.clamp(0, 1).permute(1, 2, 0).numpy() * 255).round().astype(np.uint8)
+    lab = cv2.cvtColor(arr, cv2.COLOR_RGB2LAB)
+    l, a, b = cv2.split(lab)
+    l = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid).apply(l)
+    out = cv2.cvtColor(cv2.merge((l, a, b)), cv2.COLOR_LAB2RGB)
+
+    return torch.from_numpy(out.astype(np.float32) / 255.0).permute(2, 0, 1)
 
 def train(seed, train_loader, val_loader, epochs, eta, train_len, val_len):
     print("\n" + "=" * 60)
@@ -98,7 +109,7 @@ def train(seed, train_loader, val_loader, epochs, eta, train_len, val_len):
     return model, history, best_val_loss
 
 
-def evaluate_model(model, seed, test_dataset):
+def evaluate_model(model, seed, test_dataset, clahe=False, clahe_clip=2.0, clahe_tiles=(8, 8)):
     print(f"\nEvaluating seed {seed}...")
     assert len(test_dataset) == 100, f"Expected 100 test images, got {len(test_dataset)}"
     model.eval()
@@ -119,6 +130,11 @@ def evaluate_model(model, seed, test_dataset):
                 ("Output", output),
                 ("Ground Truth", normal)
             ]
+            if clahe:
+                methods.insert(
+                    2,
+                    ("Output+CLAHE", apply_clahe(output, clahe_clip, clahe_tiles))
+                )
 
             for method_name, image in methods:
 
@@ -135,7 +151,7 @@ def evaluate_model(model, seed, test_dataset):
 
 
 METRICS = ["MLI", "CI", "E", "AG"]
-METHOD_ORDER = ["Input", "Output", "Ground Truth"]
+METHOD_ORDER = ["Input", "Output", "Output+CLAHE", "Ground Truth"]
 
 def summarize_metrics(results_df, ddof=1):
     """Mean ± SD across test images, per method.
