@@ -13,6 +13,15 @@ class DirectCNN(nn.Module):
             nn.Conv2d(32, 64, 3, padding=1), # (32 channels -> 64 channels), kernel: 3x3
             nn.ReLU(inplace=True),
 
+            nn.Conv2d(64, 64, 3, padding=1),
+            nn.ReLU(inplace=True),
+
+            nn.Conv2d(64, 64, 3, padding=1),
+            nn.ReLU(inplace=True),
+
+            nn.Conv2d(64, 64, 3, padding=1),
+            nn.ReLU(inplace=True),
+
             nn.Conv2d(64, 32, 3, padding=1), # (64 channels -> 32 channels), kernel: 3x3
             nn.ReLU(inplace=True),
 
