@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 
 def to_grayscale(image):
     image = image.detach().cpu().numpy()
@@ -77,3 +78,12 @@ def calculate_colorfulness(image):
     mean_root = np.sqrt(mean_rg**2 + mean_yb**2)
 
     return float(std_root + 0.3 * mean_root)
+
+def calculate_fidelity(image, reference):
+    a = image.detach().cpu().numpy().transpose(1, 2, 0)
+    b = reference.detach().cpu().numpy().transpose(1, 2, 0)
+
+    psnr = peak_signal_noise_ratio(b, a, data_range=1.0)
+    ssim = structural_similarity(b, a, data_range=1.0, channel_axis=2)
+
+    return {"PSNR": float(psnr), "SSIM": float(ssim)}

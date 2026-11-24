@@ -6,7 +6,7 @@ import pandas as pd
 import os
 import cv2
 
-from src.metrics import calculate_metrics
+from src.metrics import calculate_metrics, calculate_fidelity
 from src.models.direct_cnn import DirectCNN
 from seed import set_seed
 
@@ -23,7 +23,23 @@ def apply_clahe(img, clip_limit=2.0, tile_grid=(8, 8)):
 
     return torch.from_numpy(out.astype(np.float32) / 255.0).permute(2, 0, 1)
 
-def train(seed, train_loader, val_loader, epochs, eta, train_len, val_len):
+def train(seed, train_loader, val_loader, epochs, eta, train_len, val_len, load=False):
+    if load:
+        ckpt = torch.load(
+            f"./output/checkpoints/d_cnn_seed_{seed}.pth",
+            map_location=device,
+            weights_only=True,
+        )
+        # new checkpoints are dicts; very old ones were a raw state_dict
+        state = ckpt["model_state_dict"] if "model_state_dict" in ckpt else ckpt
+
+        model = DirectCNN().to(device)
+        model.load_state_dict(state)
+        model.eval()
+
+        best_val = ckpt.get("best_val_loss") if "model_state_dict" in ckpt else None
+        return model, None, best_val
+    
     print("\n" + "=" * 60)
     print(f"START TRAINING - SEED {seed}")
     print("=" * 60)
@@ -108,6 +124,8 @@ def train(seed, train_loader, val_loader, epochs, eta, train_len, val_len):
     )
     return model, history, best_val_loss
 
+METRICS = ["MLI", "CI", "E", "AG", "PSNR", "SSIM"]
+METHOD_ORDER = ["Input", "Output", "Output+CLAHE", "Ground Truth"]
 
 def evaluate_model(model, seed, test_dataset, clahe=False, clahe_clip=2.0, clahe_tiles=(8, 8)):
     print(f"\nEvaluating seed {seed}...")
@@ -140,18 +158,20 @@ def evaluate_model(model, seed, test_dataset, clahe=False, clahe_clip=2.0, clahe
 
                 metrics = calculate_metrics(image)
 
+                if method_name == "Ground Truth":
+                    fidelity = {"PSNR": float("nan"), "SSIM": float("nan")}
+                else:
+                    fidelity = calculate_fidelity(image, normal)
+
                 results.append({
                     "Seed": seed,
                     "Image": idx,
                     "Method": method_name,
-                    **metrics
+                    **metrics,
+                    **fidelity
                 })
 
     return pd.DataFrame(results)
-
-
-METRICS = ["MLI", "CI", "E", "AG"]
-METHOD_ORDER = ["Input", "Output", "Output+CLAHE", "Ground Truth"]
 
 def summarize_metrics(results_df, ddof=1):
     """Mean ± SD across test images, per method.
