@@ -8,6 +8,7 @@ import cv2
 
 from src.metrics import calculate_metrics, calculate_fidelity
 from src.models.direct_cnn import DirectCNN
+from src.models.unet import UNet
 from seed import set_seed
 
 device = torch.device(
@@ -23,17 +24,18 @@ def apply_clahe(img, clip_limit=2.0, tile_grid=(8, 8)):
 
     return torch.from_numpy(out.astype(np.float32) / 255.0).permute(2, 0, 1)
 
-def train(seed, train_loader, val_loader, epochs, eta, train_len, val_len, load=False):
+def train(seed, train_loader, val_loader, epochs, eta, train_len, val_len,
+          load=False, model_cls=DirectCNN, tag="d_cnn"):
     if load:
         ckpt = torch.load(
-            f"./output/checkpoints/d_cnn_seed_{seed}.pth",
+            f"./output/checkpoints/{tag}_seed_{seed}.pth",
             map_location=device,
             weights_only=True,
         )
         # new checkpoints are dicts; very old ones were a raw state_dict
         state = ckpt["model_state_dict"] if "model_state_dict" in ckpt else ckpt
 
-        model = DirectCNN().to(device)
+        model = model_cls().to(device)
         model.load_state_dict(state)
         model.eval()
 
@@ -46,7 +48,9 @@ def train(seed, train_loader, val_loader, epochs, eta, train_len, val_len, load=
 
     set_seed(seed)
 
-    model = DirectCNN().to(device)
+    model = model_cls().to(device)
+    n_params = sum(p.numel() for p in model.parameters())
+    print(f"Model: {model_cls.__name__} | params: {n_params:,}")
 
 
     # experiment needed: L1, Gradient, SSIM, PSNR
@@ -120,7 +124,7 @@ def train(seed, train_loader, val_loader, epochs, eta, train_len, val_len, load=
             "model_state_dict": best_state,
             "best_val_loss": best_val_loss
         },
-        f"./output/checkpoints/d_cnn_seed_{seed}.pth"
+        f"./output/checkpoints/{tag}_seed_{seed}.pth"
     )
     return model, history, best_val_loss
 
@@ -186,6 +190,6 @@ def summarize_metrics(results_df, ddof=1):
             f"{mean.loc[k, m]:.4f} ± {std.loc[k, m]:.4f}" for k in mean.index
         ]
 
-    print(f"\nMETRIC SUMMARY (SD over images, ddof={ddof})")
-    print(display.to_string())
+    # print(f"\nMETRIC SUMMARY (SD over images, ddof={ddof})")
+    # print(display.to_string())
     return display
